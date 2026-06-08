@@ -6,6 +6,13 @@ ENV UV_COMPILE_BYTECODE=1 \
     UV_PYTHON_INSTALL_DIR=/python \
     UV_PYTHON_PREFERENCE=only-managed
 
+# Install build tools for C extensions and pin Python version
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends build-essential && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN uv python install 3.13
+
 WORKDIR /app
 
 # Copy dependency files first
