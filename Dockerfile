@@ -5,74 +5,38 @@ ENV UV_COMPILE_BYTECODE=1 \
     UV_PYTHON_INSTALL_DIR=/python \
     UV_PYTHON_PREFERENCE=only-managed
 
+# Install build dependencies
 RUN apt-get update -y && \
     apt-get install --no-install-recommends -y git && \
     rm -rf /var/lib/apt/lists/*
 
+# Install Python 3.13
 RUN uv python install 3.13
 
 WORKDIR /app
-COPY uv.lock pyproject.toml ./
-RUN uv sync --frozen --no-install-project --no-dev
+RUN --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=bind,source=uv.lock,target=uv.lock \
+    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
+    uv sync --frozen --no-install-project --no-dev
 COPY . /app
-RUN uv sync --frozen --no-dev --no-install-project
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev
 
-FROM debian:bookworm-slim AS runtime
+# Use Playwright's official Python image for the runtime
+FROM mcr.microsoft.com/playwright/python:v1.50.0-noble AS runtime
 
-RUN apt-get update && \
-    apt-get install --no-install-recommends -y \
-    ca-certificates \
-    fonts-liberation \
-    libasound2 \
-    libatk-bridge2.0-0 \
-    libatk1.0-0 \
-    libc6 \
-    libcairo2 \
-    libcups2 \
-    libdbus-1-3 \
-    libexpat1 \
-    libfontconfig1 \
-    libgbm1 \
-    libgcc1 \
-    libglib2.0-0 \
-    libgtk-3-0 \
-    libnspr4 \
-    libnss3 \
-    libpango-1.0-0 \
-    libpangocairo-1.0-0 \
-    libstdc++6 \
-    libx11-6 \
-    libx11-xcb1 \
-    libxcb1 \
-    libxcomposite1 \
-    libxcursor1 \
-    libxdamage1 \
-    libxext6 \
-    libxfixes3 \
-    libxi6 \
-    libxrandr2 \
-    libxrender1 \
-    libxss1 \
-    libxtst6 \
-    lsb-release \
-    wget \
-    xdg-utils && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
-
+# Copy only necessary files from builder
 COPY --from=builder /python /python
 COPY --from=builder /app /app
 
 ENV ANONYMIZED_TELEMETRY=false \
     PATH="/app/.venv/bin:$PATH" \
-    CHROME_BIN=/usr/bin/chromium \
-    CHROMIUM_FLAGS="--no-sandbox --headless --disable-gpu --disable-dev-shm-usage" \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    BROWSER_USE_HEADLESS=true
 
 WORKDIR /app
 
-RUN playwright install chromium
-
 EXPOSE 8000
 
+# Run the server directly
 CMD ["python", "server", "--port", "8000"]
