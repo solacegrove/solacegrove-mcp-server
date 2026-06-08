@@ -14,13 +14,10 @@ RUN apt-get update -y && \
 RUN uv python install 3.13
 
 WORKDIR /app
-RUN --mount=type=cache,target=/root/.cache/uv \
-    --mount=type=bind,source=uv.lock,target=uv.lock \
-    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
-    uv sync --frozen --no-install-project --no-dev
+COPY uv.lock pyproject.toml ./
+RUN uv sync --frozen --no-install-project --no-dev
 COPY . /app
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev
+RUN uv sync --frozen --no-dev --no-install-project
 
 # Use Playwright's official Python image for the runtime
 FROM mcr.microsoft.com/playwright/python:v1.50.0-noble AS runtime
