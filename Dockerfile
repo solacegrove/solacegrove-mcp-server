@@ -15,7 +15,7 @@ WORKDIR /app
 COPY uv.lock pyproject.toml ./
 RUN uv sync --frozen --no-install-project --no-dev
 COPY . /app
-RUN uv sync --frozen --no-dev
+RUN uv sync --frozen --no-dev --no-install-project
 
 FROM debian:bookworm-slim AS runtime
 
