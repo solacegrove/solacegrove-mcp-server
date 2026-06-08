@@ -6,7 +6,7 @@ ENV UV_COMPILE_BYTECODE=1 \
     UV_PYTHON_PREFERENCE=only-managed
 
 RUN apt-get update -y && \
-    apt-get install --no-install-recommends -y clang git && \
+    apt-get install --no-install-recommends -y git && \
     rm -rf /var/lib/apt/lists/*
 
 RUN uv python install 3.13
@@ -19,48 +19,60 @@ RUN uv sync --frozen --no-dev
 
 FROM debian:bookworm-slim AS runtime
 
-RUN mkdir -p /run/secrets && \
-    echo "browser-use" > /run/secrets/vnc_password_default
-
 RUN apt-get update && \
     apt-get install --no-install-recommends -y \
-    xfce4 \
-    xfce4-terminal \
-    dbus-x11 \
-    tigervnc-standalone-server \
-    tigervnc-tools \
-    nodejs \
-    npm \
-    fonts-freefont-ttf \
-    fonts-ipafont-gothic \
-    fonts-wqy-zenhei \
-    fonts-thai-tlwg \
-    fonts-kacst \
-    fonts-symbola \
-    fonts-noto-color-emoji && \
-    npm i -g proxy-login-automator && \
+    ca-certificates \
+    fonts-liberation \
+    libasound2 \
+    libatk-bridge2.0-0 \
+    libatk1.0-0 \
+    libc6 \
+    libcairo2 \
+    libcups2 \
+    libdbus-1-3 \
+    libexpat1 \
+    libfontconfig1 \
+    libgbm1 \
+    libgcc1 \
+    libglib2.0-0 \
+    libgtk-3-0 \
+    libnspr4 \
+    libnss3 \
+    libpango-1.0-0 \
+    libpangocairo-1.0-0 \
+    libstdc++6 \
+    libx11-6 \
+    libx11-xcb1 \
+    libxcb1 \
+    libxcomposite1 \
+    libxcursor1 \
+    libxdamage1 \
+    libxext6 \
+    libxfixes3 \
+    libxi6 \
+    libxrandr2 \
+    libxrender1 \
+    libxss1 \
+    libxtst6 \
+    lsb-release \
+    wget \
+    xdg-utils && \
     apt-get clean && \
-    rm -rf /var/lib/apt/lists/* && \
-    rm -rf /var/cache/apt/*
+    rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /python /python
 COPY --from=builder /app /app
-RUN chmod -R 755 /python /app
 
 ENV ANONYMIZED_TELEMETRY=false \
     PATH="/app/.venv/bin:$PATH" \
-    DISPLAY=:0 \
     CHROME_BIN=/usr/bin/chromium \
-    CHROMIUM_FLAGS="--no-sandbox --headless --disable-gpu --disable-software-rasterizer --disable-dev-shm-usage"
+    CHROMIUM_FLAGS="--no-sandbox --headless --disable-gpu --disable-dev-shm-usage" \
+    PYTHONUNBUFFERED=1
 
-RUN mkdir -p ~/.vnc && \
-    printf '#!/bin/sh\nunset SESSION_MANAGER\nunset DBUS_SESSION_BUS_ADDRESS\nstartxfce4' > /root/.vnc/xstartup && \
-    chmod +x /root/.vnc/xstartup && \
-    printf '#!/bin/bash\n\n# Use Docker secret for VNC password if available, else fallback to default\nif [ -f "/run/secrets/vnc_password" ]; then\n  cat /run/secrets/vnc_password | vncpasswd -f > /root/.vnc/passwd\nelse\n  cat /run/secrets/vnc_password_default | vncpasswd -f > /root/.vnc/passwd\nfi\n\nchmod 600 /root/.vnc/passwd\nvncserver -depth 24 -geometry 1920x1080 -localhost no -PasswordFile /root/.vnc/passwd :0\nproxy-login-automator\npython /app/server --port 8000' > /app/boot.sh && \
-    chmod +x /app/boot.sh
+WORKDIR /app
 
-RUN playwright install --with-deps --no-shell chromium
+RUN playwright install chromium
 
 EXPOSE 8000
 
-ENTRYPOINT ["/bin/bash", "/app/boot.sh"]
+CMD ["python", "server", "--port", "8000"]
