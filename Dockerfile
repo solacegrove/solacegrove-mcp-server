@@ -5,12 +5,10 @@ ENV UV_COMPILE_BYTECODE=1 \
     UV_PYTHON_INSTALL_DIR=/python \
     UV_PYTHON_PREFERENCE=only-managed
 
-# Install build dependencies
 RUN apt-get update -y && \
     apt-get install --no-install-recommends -y git && \
     rm -rf /var/lib/apt/lists/*
 
-# Install Python 3.13
 RUN uv python install 3.13
 
 WORKDIR /app
@@ -19,10 +17,8 @@ RUN uv sync --frozen --no-install-project --no-dev
 COPY . /app
 RUN uv sync --frozen --no-dev --no-install-project
 
-# Use Playwright's official Python image for the runtime
 FROM mcr.microsoft.com/playwright/python:v1.50.0-noble AS runtime
 
-# Copy only necessary files from builder
 COPY --from=builder /python /python
 COPY --from=builder /app /app
 
@@ -35,5 +31,4 @@ WORKDIR /app
 
 EXPOSE 8000
 
-# Run the server directly
 CMD ["python", "server", "--port", "8000"]
