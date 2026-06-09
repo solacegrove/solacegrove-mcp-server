@@ -21,6 +21,7 @@ import traceback
 import uuid
 from datetime import datetime
 from typing import Any, Dict, Optional, Tuple, Union
+from contextlib import asynccontextmanager
 
 # Third-party imports
 import mcp.types as types
@@ -72,10 +73,6 @@ def init_configuration() -> Dict[str, Any]:
 CONFIG = init_configuration()
 task_store: Dict[str, Dict[str, Any]] = {}
 
-async def create_browser_context_for_task():
-    """Compatibility function."""
-    return Browser()
-
 async def run_browser_task_async(
     task_id: str,
     url: str,
@@ -125,9 +122,9 @@ async def cleanup_old_tasks():
             del task_store[tid]
 
 def create_mcp_server(llm: BaseLanguageModel) -> Server:
-    app = Server("solacegrove_mcp")
+    mcp_server = Server("solacegrove_mcp")
 
-    @app.list_tools()
+    @mcp_server.list_tools()
     async def list_tools() -> list[types.Tool]:
         logger.info("RetellAI requested tool list")
         return [
@@ -179,7 +176,7 @@ def create_mcp_server(llm: BaseLanguageModel) -> Server:
             )
         ]
 
-    @app.call_tool()
+    @mcp_server.call_tool()
     async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
         task_id = str(uuid.uuid4())
         url = CONFIG["BOOKING_URL"]
@@ -211,12 +208,18 @@ def create_mcp_server(llm: BaseLanguageModel) -> Server:
 
         return [types.TextContent(type="text", text=json.dumps({"task_id": task_id, "status": "pending"}, indent=2))]
 
-    return app
+    return mcp_server
+
+@asynccontextmanager
+async def lifespan(app: Starlette):
+    cleanup_task = asyncio.create_task(cleanup_old_tasks())
+    yield
+    cleanup_task.cancel()
 
 def main():
     port = int(os.environ.get("PORT", 8000))
     llm = ChatOpenAI(model="gpt-4o", temperature=0.0)
-    app = create_mcp_server(llm)
+    mcp_app = create_mcp_server(llm)
     sse = SseServerTransport("/messages/")
 
     async def handle_sse(request):
@@ -234,7 +237,7 @@ def main():
             await request._send(message)
 
         async with sse.connect_sse(request.scope, request.receive, send_wrapper) as streams:
-            await app.run(streams[0], streams[1], app.create_initialization_options())
+            await mcp_app.run(streams[0], streams[1], mcp_app.create_initialization_options())
 
     async def handle_messages(request):
         async def receive():
@@ -251,15 +254,13 @@ def main():
         return Response(status_code=200)
 
     starlette_app = Starlette(
+        lifespan=lifespan,
         routes=[
             Route("/sse", endpoint=handle_sse, methods=["GET", "POST"]),
+            Route("/health", endpoint=handle_sse, methods=["GET", "POST"]),
             Route("/messages/", endpoint=handle_messages, methods=["POST"]),
         ]
     )
-
-    @starlette_app.on_event("startup")
-    async def startup():
-        asyncio.create_task(cleanup_old_tasks())
 
     uvicorn.run(starlette_app, host="0.0.0.0", port=port)
 
