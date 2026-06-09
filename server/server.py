@@ -15,12 +15,9 @@ import json
 import logging
 import os
 import sys
-import threading
-import time
-import traceback
 import uuid
 from datetime import datetime
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict
 from contextlib import asynccontextmanager
 
 # Third-party imports
@@ -39,7 +36,7 @@ from mcp.server.sse import SseServerTransport
 from pythonjsonlogger import jsonlogger
 from starlette.applications import Starlette
 from starlette.routing import Route
-from starlette.responses import Response, JSONResponse
+from starlette.responses import Response
 
 # Configure logging
 logger = logging.getLogger()
@@ -223,41 +220,17 @@ def main():
     sse = SseServerTransport("/messages/")
 
     async def handle_sse(request):
-        if request.method == "POST":
-            return await handle_messages(request)
-            
-        async def send_wrapper(message):
-            if message["type"] == "http.response.start":
-                message["headers"] = [
-                    (b"content-type", b"text/event-stream"),
-                    (b"cache-control", b"no-cache, no-store, must-revalidate"),
-                    (b"connection", b"keep-alive"),
-                    (b"x-accel-buffering", b"no"),
-                ]
-            await request._send(message)
-
-        async with sse.connect_sse(request.scope, request.receive, send_wrapper) as streams:
+        async with sse.connect_sse(request.scope, request.receive, request._send) as streams:
             await mcp_app.run(streams[0], streams[1], mcp_app.create_initialization_options())
 
     async def handle_messages(request):
-        async def receive():
-            body = await request.body()
-            return {"type": "http.request", "body": body, "more_body": False}
-            
-        async def send_wrapper(message):
-            if message["type"] == "http.response.start":
-                message["status"] = 200
-                message["headers"] = [(b"content-type", b"application/json")]
-            await request._send(message)
-
-        await sse.handle_post_message(request.scope, receive, send_wrapper)
-        return Response(status_code=200)
+        await sse.handle_post_message(request.scope, request.receive, request._send)
+        return Response(status_code=202)
 
     starlette_app = Starlette(
         lifespan=lifespan,
         routes=[
-            Route("/sse", endpoint=handle_sse, methods=["GET", "POST"]),
-            Route("/health", endpoint=handle_sse, methods=["GET", "POST"]),
+            Route("/sse", endpoint=handle_sse, methods=["GET"]),
             Route("/messages/", endpoint=handle_messages, methods=["POST"]),
         ]
     )
