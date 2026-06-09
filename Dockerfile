@@ -25,7 +25,7 @@ RUN uv sync --frozen --no-install-project --no-dev
 COPY . /app
 
 # Final sync
-RUN uv sync --frozen --no-dev
+RUN uv sync --frozen --no-install-project --no-dev
 
 # Runtime stage - Use the specific version recommended for Railway
 FROM mcr.microsoft.com/playwright/python:v1.52.0-noble AS runtime
