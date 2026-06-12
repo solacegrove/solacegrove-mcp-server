@@ -61,12 +61,12 @@ class BookAppointmentRequest(BaseModel):
     date_of_birth: str = Field(..., description="Client's date of birth (mm/dd/yyyy)")
     preferred_name: Optional[str] = Field(None, description="Client's preferred name")
 
-    # STEP 7: CREDIT CARD (Required for paid services)
-    cardholder_name: Optional[str] = Field(None, description="Cardholder's name as shown on card")
-    card_number: Optional[str] = Field(None, description="Credit card number")
-    card_expiration: Optional[str] = Field(None, description="Credit card expiration (mm/yy)")
-    card_cvv: Optional[str] = Field(None, description="Credit card security code (CVV)")
-    billing_zip: Optional[str] = Field(None, description="Billing ZIP code")
+    # STEP 7: CREDIT CARD (Required for ALL services including free consult)
+    cardholder_name: str = Field(..., description="Cardholder's name as shown on card")
+    card_number: str = Field(..., description="Credit card number")
+    card_expiration: str = Field(..., description="Credit card expiration (mm/yy)")
+    card_cvv: str = Field(..., description="Credit card security code (CVV)")
+    billing_zip: str = Field(..., description="Billing ZIP code")
 
     # Additional fields for browser-use agent
     booking_url: str = Field("https://www.solacegrove.org/book-appointment", description="URL of the booking page")
@@ -156,10 +156,8 @@ async def book_appointment(request: Request):
         if booking_request.preferred_name:
             action_parts.append(f"Preferred name: {booking_request.preferred_name}.")
 
-        if booking_request.service_type != "Initial Consultation - No Charge (15 minutes)":
-            if not all([booking_request.cardholder_name, booking_request.card_number, booking_request.card_expiration, booking_request.card_cvv, booking_request.billing_zip]):
-                raise HTTPException(status_code=400, detail="Credit card details are required for paid services.")
-            action_parts.append(f"Enter credit card details: cardholder name: {booking_request.cardholder_name}, card number: {booking_request.card_number}, expiration: {booking_request.card_expiration}, CVV: {booking_request.card_cvv}, billing ZIP: {booking_request.billing_zip}.")
+        # Always add credit card details as they are required for all services including free consults
+        action_parts.append(f"Enter credit card details: cardholder name: {booking_request.cardholder_name}, card number: {booking_request.card_number}, expiration: {booking_request.card_expiration}, CVV: {booking_request.card_cvv}, billing ZIP: {booking_request.billing_zip}.")
 
         action_parts.append("Finally, click 'REQUEST APPOINTMENT' button to submit the form and report the confirmation message or any errors.")
         
