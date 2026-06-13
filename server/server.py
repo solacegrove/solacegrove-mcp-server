@@ -3,6 +3,9 @@ import os
 import json
 import logging
 from typing import List, Literal, Optional, Union
+from datetime import datetime
+import re
+import argparse
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -38,13 +41,13 @@ class BookAppointmentRequest(BaseModel):
     location: Literal["telehealth", "in_person"] = Field(..., description="Location for the appointment")
 
     # STEP 3: DATE AND TIME SELECTION
-    appointment_date: str = Field(..., description="Date of the appointment (e.g., '2026-06-13')")
-    appointment_time: str = Field(..., description="Time of the appointment (e.g., '1:00 PM')")
+    appointment_date: Optional[str] = Field(None, description="Date of the appointment (e.g., '2026-06-13'). Optional if appointment_time contains full date.")
+    appointment_time: str = Field(..., description="Time of the appointment (e.g., '1:00 PM') or combined date and time (e.g., 'Tuesday June 17 at 3:30 PM')")
 
     # STEP 4: PRESCREENER (Reason for Care)
-    reason_for_care: List[str] = Field(..., description="Reasons for seeking care (e.g., ['Anxiety', 'Depression'])")
-    care_type: List[str] = Field(..., description="Type of care sought (e.g., ['Psychotherapy', 'Medication'])")
-    treatment_history: List[str] = Field(..., description="Past mental health concerns or treatment (e.g., ['In therapy now'])")
+    reason_for_care: Union[str, List[str]] = Field(..., description="Reasons for seeking care (e.g., 'Anxiety, Depression' or ['Anxiety', 'Depression'])")
+    care_type: Union[str, List[str]] = Field(..., description="Type of care sought (e.g., 'Psychotherapy, Medication' or ['Psychotherapy', 'Medication'])")
+    treatment_history: Union[str, List[str]] = Field(..., description="Past mental health concerns or treatment (e.g., 'In therapy now' or ['In therapy now'])")
 
     # STEP 5: BILLING & PAYMENT
     payment_method: str = Field(..., description="Payment method (e.g., 'Self-Pay', 'Insurance')")
@@ -85,7 +88,7 @@ async def run_browser_task(url: str, action: str) -> str:
     llm = ChatOpenAI(
         model="gpt-4o", # Or another suitable model
         api_key=openai_api_key,
-        base_url=os.getenv("OPENAI_API_BASE", "https://api.openai.com/v1"),
+        base_url=os.getenv("OPENAI_API_BASE", "https://api.openai.com"),
     )
     
     # Initialize Agent for each task
@@ -139,11 +142,49 @@ async def book_appointment(request: Request):
         args = body.get("args", body)
         booking_request = BookAppointmentRequest(**args)
 
+        # Helper to convert string to list if necessary
+        def to_list(item: Union[str, List[str]]) -> List[str]:
+            if isinstance(item, str):
+                return [s.strip() for s in item.split(',') if s.strip()]
+            return item
+
+        booking_request.reason_for_care = to_list(booking_request.reason_for_care)
+        booking_request.care_type = to_list(booking_request.care_type)
+        booking_request.treatment_history = to_list(booking_request.treatment_history)
+
+        # Parse combined date and time if appointment_date is not provided
+        parsed_date = booking_request.appointment_date
+        parsed_time = booking_request.appointment_time
+
+        if not parsed_date and booking_request.appointment_time:
+            # Attempt to parse a combined date and time string
+            # Example: 'Tuesday June 17 at 3:30 PM'
+            try:
+                # This regex is a basic attempt and might need refinement for all cases
+                match = re.search(r'(\w+,?\s+\w+\s+\d{1,2})\s+at\s+(\d{1,2}:\d{2}\s+(?:AM|PM))', booking_request.appointment_time, re.IGNORECASE)
+                if match:
+                    date_str = match.group(1) + ', ' + str(datetime.now().year) # Add current year for parsing
+                    time_str = match.group(2)
+                    # Attempt to parse with a few common formats
+                    try:
+                        dt_obj = datetime.strptime(date_str + ' ' + time_str, '%A %B %d, %Y %I:%M %p')
+                    except ValueError:
+                        dt_obj = datetime.strptime(date_str + ' ' + time_str, '%B %d, %Y %I:%M %p')
+                    parsed_date = dt_obj.strftime('%Y-%m-%d')
+                    parsed_time = dt_obj.strftime('%I:%M %p')
+                else:
+                    # If no 'at' found, try parsing just the time, assume date is today
+                    dt_obj = datetime.strptime(booking_request.appointment_time, '%I:%M %p')
+                    parsed_date = datetime.now().strftime('%Y-%m-%d')
+                    parsed_time = dt_obj.strftime('%I:%M %p')
+            except ValueError as e:
+                logger.warning(f"Could not parse combined date/time string '{booking_request.appointment_time}': {e}. Proceeding with original values.")
+
         action_parts = [
             f"Navigate to {booking_request.booking_url}.",
             f"Select service type: {booking_request.service_type}.",
             f"Select location: {booking_request.location}.",
-            f"Select date {booking_request.appointment_date} and time {booking_request.appointment_time}.",
+            f"Select date {parsed_date or booking_request.appointment_date} and time {parsed_time or booking_request.appointment_time}.",
             f"Fill prescreener with reason for care: {', '.join(booking_request.reason_for_care)}, care type: {', '.join(booking_request.care_type)}, and treatment history: {', '.join(booking_request.treatment_history)}.",
             f"Set payment method to {booking_request.payment_method}."
         ]
@@ -188,15 +229,12 @@ async def root():
 # This part is for local development/testing with uvicorn
 # In Railway, uvicorn is typically run via a Procfile or directly by the Dockerfile CMD
 def main():
-    import argparse
+    import uvicorn
     parser = argparse.ArgumentParser(description="Run the Solace Grove Custom Function server.")
     parser.add_argument("--port", type=int, default=int(os.environ.get("PORT", 8000)), help="Port to listen on.")
     args = parser.parse_args()
     
-    import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=args.port)
 
 if __name__ == "__main__":
     main()
-
-# Added a comment to trigger a new Railway deployment.

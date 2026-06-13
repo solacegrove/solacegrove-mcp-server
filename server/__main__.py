@@ -1,7 +1,4 @@
-"""Server entry point."""
-
 import sys
-
-from server import main
+from server.server import main
 
 sys.exit(main())
