@@ -187,9 +187,16 @@ async def root():
 
 # This part is for local development/testing with uvicorn
 # In Railway, uvicorn is typically run via a Procfile or directly by the Dockerfile CMD
-if __name__ == "__main__":
+def main():
+    import argparse
+    parser = argparse.ArgumentParser(description="Run the Solace Grove Custom Function server.")
+    parser.add_argument("--port", type=int, default=int(os.environ.get("PORT", 8000)), help="Port to listen on.")
+    args = parser.parse_args()
+    
     import uvicorn
-    port = int(os.environ.get("PORT", 8000))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    uvicorn.run(app, host="0.0.0.0", port=args.port)
+
+if __name__ == "__main__":
+    main()
 
 # Added a comment to trigger a new Railway deployment.
