@@ -8,7 +8,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from browser_use import Agent, Browser, BrowserConfig
-from browser_use.llm.openai.chat import ChatOpenAI
+from langchain_openai import ChatOpenAI
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
