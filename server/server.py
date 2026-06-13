@@ -1,4 +1,3 @@
-
 import asyncio
 import os
 import json
@@ -8,8 +7,7 @@ from typing import List, Literal, Optional, Union
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
-from browser_use.agent.service import Agent
-from browser_use.browser.session import BrowserSession as Browser
+from browser_use import Agent, Browser, BrowserConfig
 from browser_use.llm.openai.chat import ChatOpenAI
 
 # Configure logging
